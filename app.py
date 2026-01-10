@@ -8,10 +8,6 @@ st.set_page_config(page_title="Municipal Waste Policy Assistant", layout="center
 # -------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "vectorstore" not in st.session_state:
-    st.session_state.vectorstore = None
-if "qa_chain" not in st.session_state:
-    st.session_state.qa_chain = None
 
 # -------------------------------
 # UI Header
@@ -31,14 +27,12 @@ elif os.getenv("HF_API_KEY"):
 # Load Resources Once (Cached)
 # -------------------------------
 @st.cache_resource
-def load_qa_system():
+def load_resources():
     """Load all AI components once and cache them"""
     from langchain_community.document_loaders import PyPDFLoader
     from langchain_text_splitters import RecursiveCharacterTextSplitter
-    from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
+    from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_community.vectorstores import FAISS
-    from langchain.chains import RetrievalQA
-    from langchain_core.prompts import PromptTemplate
     from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
     
     # Load documents
@@ -52,7 +46,7 @@ def load_qa_system():
     )
     chunks = splitter.split_documents(documents)
     
-    # Create embeddings (semantic understanding handles typos!)
+    # Create embeddings
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
@@ -65,42 +59,39 @@ def load_qa_system():
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
     
-    pipe = pipeline(
+    text_generator = pipeline(
         "text2text-generation",
         model=model,
         tokenizer=tokenizer,
-        max_new_tokens=512
+        max_new_tokens=256
     )
     
-    llm = HuggingFacePipeline(pipeline=pipe)
+    return vectorstore, text_generator
+
+def get_answer(query, vectorstore, text_generator):
+    """Get answer using retrieval and generation"""
+    # Retrieve relevant documents
+    docs = vectorstore.similarity_search(query, k=4)
     
-    # Custom prompt for accurate, direct answers
-    prompt_template = """Answer the question accurately and directly based ONLY on the provided context. 
-Extract the specific information that answers the question. Be concise and precise.
-If the answer is not in the context, say "I don't have information about that in the policy documents."
+    # Combine context
+    context = "\n".join([doc.page_content for doc in docs])
+    
+    # Create prompt
+    prompt = f"""Based on the following context, answer the question accurately and concisely.
+If the answer is not in the context, say "I don't have information about that."
 
 Context:
 {context}
 
-Question: {question}
+Question: {query}
 
-Direct Answer:"""
+Answer:"""
     
-    PROMPT = PromptTemplate(
-        template=prompt_template,
-        input_variables=["context", "question"]
-    )
+    # Generate answer
+    result = text_generator(prompt, max_new_tokens=256)
+    answer = result[0]['generated_text']
     
-    # Create QA chain with custom prompt
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 5}),
-        chain_type="stuff",
-        chain_type_kwargs={"prompt": PROMPT},
-        return_source_documents=True
-    )
-    
-    return qa_chain, vectorstore
+    return answer, docs
 
 # -------------------------------
 # Spell Correction Helper
@@ -108,7 +99,6 @@ Direct Answer:"""
 def correct_query(query):
     """Basic spell correction for common waste-related terms"""
     corrections = {
-        # Common typos
         "wast": "waste", "wsate": "waste",
         "recycel": "recycle", "recyle": "recycle",
         "segreation": "segregation", "segregaton": "segregation", "segragation": "segregation",
@@ -129,7 +119,6 @@ def correct_query(query):
     corrected_words = []
     
     for word in words:
-        # Check if word needs correction
         corrected = word
         for typo, correct in corrections.items():
             if typo in word:
@@ -157,28 +146,27 @@ if prompt := st.chat_input("Ask a question about waste policies..."):
     
     # Generate response
     with st.chat_message("assistant"):
-        with st.spinner("🔍 Searching policies and generating answer..."):
+        with st.spinner("Searching policies and generating answer..."):
             try:
-                # Load QA system (cached after first load)
-                qa_chain, vectorstore = load_qa_system()
+                # Load resources (cached)
+                vectorstore, text_generator = load_resources()
                 
                 # Correct common typos silently
                 corrected_query = correct_query(prompt)
                 
                 # Get answer
-                result = qa_chain.invoke({"query": corrected_query})
-                answer = result["result"]
+                answer, source_docs = get_answer(corrected_query, vectorstore, text_generator)
                 
-                # Handle empty or unhelpful answers
-                if not answer or len(answer.strip()) < 10:
-                    answer = "I'm not sure about that specific question. Could you try rephrasing it? You can ask me about waste segregation, recycling rules, disposal methods, penalties, or any other waste management topics!"
+                # Handle empty answers
+                if not answer or len(answer.strip()) < 5:
+                    answer = "I don't have specific information about that in the policy documents. Try asking about waste segregation, recycling, disposal methods, or penalties."
                 
                 st.markdown(answer)
                 
                 # Show sources (expandable)
-                if "source_documents" in result and result["source_documents"]:
-                    with st.expander("📄 View source references"):
-                        for i, doc in enumerate(result["source_documents"][:3]):
+                if source_docs:
+                    with st.expander("View source references"):
+                        for i, doc in enumerate(source_docs[:3]):
                             st.caption(f"**Source {i+1}:** {doc.page_content[:200]}...")
                 
             except Exception as e:
@@ -189,10 +177,10 @@ if prompt := st.chat_input("Ask a question about waste policies..."):
     st.session_state.messages.append({"role": "assistant", "content": answer})
 
 # -------------------------------
-# Sidebar with examples
+# Sidebar with suggestions
 # -------------------------------
 with st.sidebar:
-    st.header("💡 Suggested Questions")
+    st.header("Suggested Questions")
     st.markdown("""
     **Waste Segregation:**
     - What is waste segregation at source?
@@ -213,6 +201,6 @@ with st.sidebar:
     
     st.divider()
     
-    if st.button("🗑️ Clear Chat History"):
+    if st.button("Clear Chat History"):
         st.session_state.messages = []
         st.rerun()
