@@ -34,7 +34,7 @@ elif os.getenv("HF_API_KEY"):
 def load_qa_system():
     """Load all AI components once and cache them"""
     from langchain_community.document_loaders import PyPDFLoader
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
     from langchain_community.vectorstores import FAISS
     from langchain.chains import RetrievalQA
