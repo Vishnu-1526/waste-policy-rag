@@ -38,7 +38,7 @@ def load_qa_system():
     from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
     from langchain_community.vectorstores import FAISS
     from langchain.chains import RetrievalQA
-    from langchain.prompts import PromptTemplate
+    from langchain_core.prompts import PromptTemplate
     from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
     
     # Load documents
