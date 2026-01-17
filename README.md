@@ -1,6 +1,6 @@
 # Municipal Waste Policy Assistant 🗑️
 
-An AI-powered chatbot that answers questions about municipal waste management policies using **Agentic RAG** (Retrieval-Augmented Generation) technology powered by **IBM Granite**.
+An AI-powered chatbot that answers questions about municipal waste management policies using **RAG** (Retrieval-Augmented Generation) technology.
 
 ## 🚀 Live Demo
 
@@ -8,8 +8,8 @@ An AI-powered chatbot that answers questions about municipal waste management po
 
 ## 🌟 Features
 
-- **🤖 Agentic RAG**: Multi-step reasoning with LangChain ReAct agents
-- **🧠 IBM Granite 3.0**: State-of-the-art language model for accurate responses
+- **🔍 RAG Architecture**: Retrieves relevant policy sections before generating answers
+- **🧠 Google FLAN-T5**: Lightweight language model for accurate responses
 - **💬 Intelligent Q&A**: Ask questions about waste management policies and get accurate answers
 - **✏️ Typo Tolerance**: Understands queries even with spelling mistakes
 - **📚 Source References**: View the policy document sections used to generate answers
@@ -20,32 +20,32 @@ An AI-powered chatbot that answers questions about municipal waste management po
 
 | Technology | Purpose |
 |------------|---------|
-| **IBM Granite 3.0** | Large Language Model for generation |
-| **LangChain Agents** | Agentic RAG with ReAct reasoning |
+| **Google FLAN-T5** | Large Language Model for text generation |
+| **LangChain** | Document loading, text splitting, orchestration |
 | **FAISS** | Vector database for similarity search |
 | **Sentence-Transformers** | Text embeddings (all-MiniLM-L6-v2) |
-| **Streamlit** | Web interface |
+| **Streamlit** | Web interface with chat UI |
 | **PyPDF** | PDF document processing |
 
-## 🔄 How Agentic RAG Works
+## 🔄 How RAG Works
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   User       │ ──▶ │   ReAct      │ ──▶ │  Retriever   │
-│   Question   │     │   Agent      │     │    Tool      │
+│   User       │ ──▶ │   Spell      │ ──▶ │  Embedding   │
+│   Question   │     │   Correction │     │   Model      │
 └──────────────┘     └──────────────┘     └──────────────┘
-                            │                     │
-                            ▼                     ▼
+                                                │
+                                                ▼
                      ┌──────────────┐     ┌──────────────┐
-                     │   Thought    │     │   FAISS      │
-                     │   Process    │     │   Search     │
+                     │   Prompt     │ ◀── │   FAISS      │
+                     │   Builder    │     │   Search     │
                      └──────────────┘     └──────────────┘
-                            │                     │
-                            ▼                     ▼
-                     ┌──────────────┐     ┌──────────────┐
-                     │   IBM        │ ◀── │  Retrieved   │
-                     │   Granite    │     │   Context    │
-                     └──────────────┘     └──────────────┘
+                            │
+                            ▼
+                     ┌──────────────┐
+                     │   FLAN-T5    │
+                     │   Generation │
+                     └──────────────┘
                             │
                             ▼
                      ┌──────────────┐
@@ -58,8 +58,7 @@ An AI-powered chatbot that answers questions about municipal waste management po
 
 1. **Document Loading**: PDF is loaded and split into 500-character chunks
 2. **Embedding**: Chunks are converted to vector embeddings using Sentence-Transformers
-3. **Agent Initialization**: ReAct agent is created with retriever tool
-4. **Query Processing**: User query is corrected for typos
-5. **Agentic Reasoning**: Agent thinks, acts, and observes in a loop
-6. **Retrieval**: Agent uses retriever tool to find relevant policy chunks
-7. **Generation**: IBM Granite generates answer based on retrieved context
+3. **Query Processing**: User query is corrected for typos and converted to embedding
+4. **Retrieval**: FAISS finds the top 4 most relevant policy chunks
+5. **Prompt Building**: Retrieved context is combined with user question
+6. **Generation**: FLAN-T5 generates answer based on retrieved context
