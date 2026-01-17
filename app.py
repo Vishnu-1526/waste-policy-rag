@@ -256,17 +256,6 @@ if prompt := st.chat_input("Ask a question about waste policies..."):
 # Sidebar with suggestions
 # -------------------------------
 with st.sidebar:
-    st.header("🤖 About This App")
-    st.markdown("""
-    **Technologies Used:**
-    - 🧠 **IBM Granite 3.0** - Advanced LLM
-    - 🔄 **Agentic RAG** - Multi-step reasoning
-    - 🔍 **FAISS** - Vector search
-    - 📊 **LangChain** - AI orchestration
-    """)
-    
-    st.divider()
-    
     st.header("💡 Suggested Questions")
     st.markdown("""
     **Waste Segregation:**
