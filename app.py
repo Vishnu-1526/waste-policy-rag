@@ -12,8 +12,8 @@ if "messages" not in st.session_state:
 # -------------------------------
 # UI Header
 # -------------------------------
-st.title("Municipal Waste Policy Assistant")
-st.caption("Ask me anything about waste management policies!")
+st.title("🗑️ Municipal Waste Policy Assistant")
+st.caption("Powered by IBM Granite + Agentic RAG | Ask me anything about waste management policies!")
 
 # -------------------------------
 # Hugging Face Token
@@ -31,9 +31,13 @@ def load_resources():
     """Load all AI components once and cache them"""
     from langchain_community.document_loaders import PyPDFLoader
     from langchain_text_splitters import RecursiveCharacterTextSplitter
-    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
     from langchain_community.vectorstores import FAISS
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+    from langchain.agents import AgentExecutor, create_react_agent
+    from langchain.tools.retriever import create_retriever_tool
+    from langchain.prompts import PromptTemplate
+    from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+    import torch
     
     # Load documents
     loader = PyPDFLoader("data/municipal_wastepolicy.pdf")
@@ -53,31 +57,94 @@ def load_resources():
     
     # Create vector store
     vectorstore = FAISS.from_documents(chunks, embeddings)
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
     
-    # Load local LLM
-    model_id = "google/flan-t5-base"
+    # Create retriever tool for the agent
+    retriever_tool = create_retriever_tool(
+        retriever,
+        "waste_policy_search",
+        "Search for information about municipal waste management policies. Use this tool to find rules, regulations, penalties, disposal methods, and recycling guidelines."
+    )
+    tools = [retriever_tool]
+    
+    # Load IBM Granite model
+    model_id = "ibm-granite/granite-3.0-2b-instruct"
+    
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
-    
-    text_generator = pipeline(
-        "text2text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        max_new_tokens=256
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.float32,
+        device_map="auto",
+        low_cpu_mem_usage=True
     )
     
-    return vectorstore, text_generator
+    text_generator = pipeline(
+        "text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        max_new_tokens=256,
+        do_sample=True,
+        temperature=0.7,
+        pad_token_id=tokenizer.eos_token_id
+    )
+    
+    llm = HuggingFacePipeline(pipeline=text_generator)
+    
+    # Create ReAct Agent prompt
+    agent_prompt = PromptTemplate.from_template("""You are a helpful Municipal Waste Policy Assistant. Answer questions about waste management policies accurately.
 
-def get_answer(query, vectorstore, text_generator):
-    """Get answer using retrieval and generation"""
-    # Retrieve relevant documents
-    docs = vectorstore.similarity_search(query, k=4)
+You have access to the following tools:
+
+{tools}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: {input}
+Thought: {agent_scratchpad}""")
     
-    # Combine context
-    context = "\n".join([doc.page_content for doc in docs])
+    # Create the agent
+    agent = create_react_agent(llm, tools, agent_prompt)
+    agent_executor = AgentExecutor(
+        agent=agent,
+        tools=tools,
+        verbose=True,
+        handle_parsing_errors=True,
+        max_iterations=3
+    )
     
-    # Create prompt
-    prompt = f"""Based on the following context, answer the question accurately and concisely.
+    return vectorstore, text_generator, agent_executor, retriever
+
+def get_answer(query, vectorstore, text_generator, agent_executor, retriever, use_agent=True):
+    """Get answer using Agentic RAG or standard RAG"""
+    
+    if use_agent:
+        try:
+            # Use Agentic RAG with ReAct agent
+            result = agent_executor.invoke({"input": query})
+            answer = result.get("output", "")
+            docs = retriever.invoke(query)
+            return answer, docs
+        except Exception as e:
+            # Fallback to standard RAG if agent fails
+            use_agent = False
+    
+    if not use_agent:
+        # Standard RAG fallback
+        docs = vectorstore.similarity_search(query, k=4)
+        context = "\n".join([doc.page_content for doc in docs])
+        
+        prompt = f"""Based on the following context about municipal waste policies, answer the question accurately and concisely.
 If the answer is not in the context, say "I don't have information about that."
 
 Context:
@@ -86,11 +153,13 @@ Context:
 Question: {query}
 
 Answer:"""
-    
-    # Generate answer
-    result = text_generator(prompt, max_new_tokens=256)
-    answer = result[0]['generated_text']
-    
+        
+        result = text_generator(prompt, max_new_tokens=256)
+        answer = result[0]['generated_text']
+        # Extract only the generated part after the prompt
+        if "Answer:" in answer:
+            answer = answer.split("Answer:")[-1].strip()
+        
     return answer, docs
 
 # -------------------------------
@@ -146,16 +215,23 @@ if prompt := st.chat_input("Ask a question about waste policies..."):
     
     # Generate response
     with st.chat_message("assistant"):
-        with st.spinner("Searching policies and generating answer..."):
+        with st.spinner("🤖 Agent thinking and searching policies..."):
             try:
                 # Load resources (cached)
-                vectorstore, text_generator = load_resources()
+                vectorstore, text_generator, agent_executor, retriever = load_resources()
                 
                 # Correct common typos silently
                 corrected_query = correct_query(prompt)
                 
-                # Get answer
-                answer, source_docs = get_answer(corrected_query, vectorstore, text_generator)
+                # Get answer using Agentic RAG
+                answer, source_docs = get_answer(
+                    corrected_query, 
+                    vectorstore, 
+                    text_generator, 
+                    agent_executor, 
+                    retriever,
+                    use_agent=True
+                )
                 
                 # Handle empty answers
                 if not answer or len(answer.strip()) < 5:
@@ -165,7 +241,7 @@ if prompt := st.chat_input("Ask a question about waste policies..."):
                 
                 # Show sources (expandable)
                 if source_docs:
-                    with st.expander("View source references"):
+                    with st.expander("📚 View source references"):
                         for i, doc in enumerate(source_docs[:3]):
                             st.caption(f"**Source {i+1}:** {doc.page_content[:200]}...")
                 
@@ -180,7 +256,18 @@ if prompt := st.chat_input("Ask a question about waste policies..."):
 # Sidebar with suggestions
 # -------------------------------
 with st.sidebar:
-    st.header("Suggested Questions")
+    st.header("🤖 About This App")
+    st.markdown("""
+    **Technologies Used:**
+    - 🧠 **IBM Granite 3.0** - Advanced LLM
+    - 🔄 **Agentic RAG** - Multi-step reasoning
+    - 🔍 **FAISS** - Vector search
+    - 📊 **LangChain** - AI orchestration
+    """)
+    
+    st.divider()
+    
+    st.header("💡 Suggested Questions")
     st.markdown("""
     **Waste Segregation:**
     - What is waste segregation at source?
@@ -201,6 +288,6 @@ with st.sidebar:
     
     st.divider()
     
-    if st.button("Clear Chat History"):
+    if st.button("🗑️ Clear Chat History"):
         st.session_state.messages = []
         st.rerun()

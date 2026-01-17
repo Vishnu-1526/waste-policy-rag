@@ -1,30 +1,65 @@
 # Municipal Waste Policy Assistant 🗑️
 
-An AI-powered chatbot that answers questions about municipal waste management policies using RAG (Retrieval-Augmented Generation) technology.
+An AI-powered chatbot that answers questions about municipal waste management policies using **Agentic RAG** (Retrieval-Augmented Generation) technology powered by **IBM Granite**.
+
+## 🚀 Live Demo
+
+**[https://waste-policy-chatbot.streamlit.app](https://waste-policy-chatbot.streamlit.app)**
 
 ## 🌟 Features
 
-- **Intelligent Q&A**: Ask questions about waste management policies and get accurate answers
-- **Typo Tolerance**: Understands queries even with spelling mistakes
-- **Source References**: View the policy document sections used to generate answers
-- **Chat History**: Maintains conversation context during the session
-- **Fast Responses**: Cached model loading for quick subsequent queries
+- **🤖 Agentic RAG**: Multi-step reasoning with LangChain ReAct agents
+- **🧠 IBM Granite 3.0**: State-of-the-art language model for accurate responses
+- **💬 Intelligent Q&A**: Ask questions about waste management policies and get accurate answers
+- **✏️ Typo Tolerance**: Understands queries even with spelling mistakes
+- **📚 Source References**: View the policy document sections used to generate answers
+- **💾 Chat History**: Maintains conversation context during the session
+- **⚡ Fast Responses**: Cached model loading for quick subsequent queries
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: Streamlit
-- **LLM**: Google Flan-T5 (runs locally)
-- **Embeddings**: Sentence-Transformers (all-MiniLM-L6-v2)
-- **Vector Store**: FAISS
-- **Framework**: LangChain
-- **Document Processing**: PyPDF
+| Technology | Purpose |
+|------------|---------|
+| **IBM Granite 3.0** | Large Language Model for generation |
+| **LangChain Agents** | Agentic RAG with ReAct reasoning |
+| **FAISS** | Vector database for similarity search |
+| **Sentence-Transformers** | Text embeddings (all-MiniLM-L6-v2) |
+| **Streamlit** | Web interface |
+| **PyPDF** | PDF document processing |
 
-The app will open at `https://waste-policy-chatbot.streamlit.app`
+## 🔄 How Agentic RAG Works
 
-## 📝 How It Works
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   User       │ ──▶ │   ReAct      │ ──▶ │  Retriever   │
+│   Question   │     │   Agent      │     │    Tool      │
+└──────────────┘     └──────────────┘     └──────────────┘
+                            │                     │
+                            ▼                     ▼
+                     ┌──────────────┐     ┌──────────────┐
+                     │   Thought    │     │   FAISS      │
+                     │   Process    │     │   Search     │
+                     └──────────────┘     └──────────────┘
+                            │                     │
+                            ▼                     ▼
+                     ┌──────────────┐     ┌──────────────┐
+                     │   IBM        │ ◀── │  Retrieved   │
+                     │   Granite    │     │   Context    │
+                     └──────────────┘     └──────────────┘
+                            │
+                            ▼
+                     ┌──────────────┐
+                     │   Final      │
+                     │   Answer     │
+                     └──────────────┘
+```
 
-1. **Document Loading**: PDF is loaded and split into chunks
-2. **Embedding**: Chunks are converted to vector embeddings
-3. **Query Processing**: User query is corrected for typos and embedded
-4. **Retrieval**: Most relevant chunks are retrieved using similarity search
-5. **Generation**: LLM generates answer based on retrieved context
+### RAG Pipeline Steps:
+
+1. **Document Loading**: PDF is loaded and split into 500-character chunks
+2. **Embedding**: Chunks are converted to vector embeddings using Sentence-Transformers
+3. **Agent Initialization**: ReAct agent is created with retriever tool
+4. **Query Processing**: User query is corrected for typos
+5. **Agentic Reasoning**: Agent thinks, acts, and observes in a loop
+6. **Retrieval**: Agent uses retriever tool to find relevant policy chunks
+7. **Generation**: IBM Granite generates answer based on retrieved context

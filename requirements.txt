@@ -10,3 +10,4 @@ pypdf
 transformers
 huggingface_hub
 torch
+accelerate
