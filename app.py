@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+from huggingface_hub import InferenceClient
 
 st.set_page_config(page_title="Municipal Waste Policy Assistant", layout="centered")
 
@@ -33,59 +34,62 @@ def load_resources():
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_community.vectorstores import FAISS
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-    
+
     # Load documents
     loader = PyPDFLoader("data/municipal_wastepolicy.pdf")
     documents = loader.load()
-    
+
     # Split into chunks
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100
+        chunk_size=400,
+        chunk_overlap=80
     )
     chunks = splitter.split_documents(documents)
-    
+
     # Create embeddings
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
-    
+
     # Create vector store
     vectorstore = FAISS.from_documents(chunks, embeddings)
-    
-    # Load LLM (flan-t5-base is seq2seq; use model.generate() directly
-    # because transformers 4.50+ removed the 'text2text-generation' pipeline task)
-    model_id = "google/flan-t5-base"
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
-    
-    return vectorstore, model, tokenizer
 
-def get_answer(query, vectorstore, model, tokenizer):
+    return vectorstore
+
+
+def query_llm(prompt, hf_token):
+    """Call zephyr-7b-beta via HF InferenceClient (chat_completion) — confirmed working."""
+    client = InferenceClient(token=hf_token)
+    response = client.chat_completion(
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant that answers questions about municipal waste management policies. Always answer based on the provided context."},
+            {"role": "user", "content": prompt}
+        ],
+        model="HuggingFaceH4/zephyr-7b-beta",
+        max_tokens=300,
+        temperature=0.3,
+    )
+    return response.choices[0].message.content.strip()
+
+
+def get_answer(query, vectorstore):
     """Get answer using RAG"""
+    hf_token = os.environ.get("HUGGINGFACEHUB_API_TOKEN", "")
+
     # Retrieve relevant documents
-    docs = vectorstore.similarity_search(query, k=4)
-    
+    docs = vectorstore.similarity_search(query, k=3)
+
     # Combine context
     context = "\n".join([doc.page_content for doc in docs])
-    
-    # Create prompt
-    prompt = f"""Based on the following context about municipal waste policies, answer the question accurately and concisely.
-If the answer is not in the context, say "I don't have information about that."
+
+    prompt = f"""Use the following context from the municipal waste policy document to answer the question.
 
 Context:
 {context}
 
-Question: {query}
+Question: {query}"""
 
-Answer:"""
-    
-    # Generate answer using model.generate() directly (pipeline-agnostic)
-    inputs = tokenizer(prompt, return_tensors="pt", max_length=512, truncation=True)
-    outputs = model.generate(**inputs, max_new_tokens=256)
-    answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
+    answer = query_llm(prompt, hf_token)
     return answer, docs
 
 # -------------------------------
@@ -144,13 +148,13 @@ if prompt := st.chat_input("Ask a question about waste policies..."):
         with st.spinner("🔍 Searching policies and generating answer..."):
             try:
                 # Load resources (cached)
-                vectorstore, model, tokenizer = load_resources()
-                
+                vectorstore = load_resources()
+
                 # Correct common typos silently
                 corrected_query = correct_query(prompt)
-                
+
                 # Get answer
-                answer, source_docs = get_answer(corrected_query, vectorstore, model, tokenizer)
+                answer, source_docs = get_answer(corrected_query, vectorstore)
                 
                 # Handle empty answers
                 if not answer or len(answer.strip()) < 5:
