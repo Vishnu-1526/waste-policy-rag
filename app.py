@@ -33,7 +33,7 @@ def load_resources():
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_community.vectorstores import FAISS
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
     
     # Load documents
     loader = PyPDFLoader("data/municipal_wastepolicy.pdf")
@@ -54,21 +54,15 @@ def load_resources():
     # Create vector store
     vectorstore = FAISS.from_documents(chunks, embeddings)
     
-    # Load LLM
+    # Load LLM (flan-t5-base is seq2seq; use model.generate() directly
+    # because transformers 4.50+ removed the 'text2text-generation' pipeline task)
     model_id = "google/flan-t5-base"
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
     
-    text_generator = pipeline(
-        "text2text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        max_new_tokens=256
-    )
-    
-    return vectorstore, text_generator
+    return vectorstore, model, tokenizer
 
-def get_answer(query, vectorstore, text_generator):
+def get_answer(query, vectorstore, model, tokenizer):
     """Get answer using RAG"""
     # Retrieve relevant documents
     docs = vectorstore.similarity_search(query, k=4)
@@ -87,9 +81,10 @@ Question: {query}
 
 Answer:"""
     
-    # Generate answer
-    result = text_generator(prompt, max_new_tokens=256)
-    answer = result[0]['generated_text']
+    # Generate answer using model.generate() directly (pipeline-agnostic)
+    inputs = tokenizer(prompt, return_tensors="pt", max_length=512, truncation=True)
+    outputs = model.generate(**inputs, max_new_tokens=256)
+    answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
     
     return answer, docs
 
@@ -149,13 +144,13 @@ if prompt := st.chat_input("Ask a question about waste policies..."):
         with st.spinner("🔍 Searching policies and generating answer..."):
             try:
                 # Load resources (cached)
-                vectorstore, text_generator = load_resources()
+                vectorstore, model, tokenizer = load_resources()
                 
                 # Correct common typos silently
                 corrected_query = correct_query(prompt)
                 
                 # Get answer
-                answer, source_docs = get_answer(corrected_query, vectorstore, text_generator)
+                answer, source_docs = get_answer(corrected_query, vectorstore, model, tokenizer)
                 
                 # Handle empty answers
                 if not answer or len(answer.strip()) < 5:
