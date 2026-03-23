@@ -64,42 +64,4 @@ An AI-powered chatbot that answers questions about municipal waste management po
 5. **Prompt Building**: Retrieved context is combined with user question
 6. **Generation**: Llama 3.1 8B generates a full, accurate answer via HF Inference API (Cerebras)
 
-## ⚙️ Setup & Run Locally
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/Vishnu-1526/waste-policy-rag.git
-cd waste-policy-rag
-
-# 2. Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Add your HuggingFace API key to .streamlit/secrets.toml
-echo 'HF_API_KEY = "your_hf_token_here"' > .streamlit/secrets.toml
-
-# 5. Run the app
-streamlit run app.py
-```
-
-## 🔑 Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `HF_API_KEY` | HuggingFace API token (get one free at [huggingface.co](https://huggingface.co/settings/tokens)) |
-
-## 📁 Project Structure
-
-```
-waste-policy-rag/
-├── app.py                     # Main Streamlit application
-├── requirements.txt           # Python dependencies
-├── data/
-│   └── municipal_wastepolicy.pdf  # Source policy document
-└── .streamlit/
-    ├── config.toml            # Streamlit theme & server config
-    └── secrets.toml           # API keys (gitignored)
-```
