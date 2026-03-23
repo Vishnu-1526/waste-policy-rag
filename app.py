@@ -58,14 +58,14 @@ def load_resources():
 
 
 def query_llm(prompt, hf_token):
-    """Call zephyr-7b-beta via HF InferenceClient (chat_completion) — confirmed working."""
-    client = InferenceClient(token=hf_token)
+    """Use Cerebras provider with Llama-3.1-8B — fast and confirmed working with free HF tokens."""
+    client = InferenceClient(token=hf_token, provider="cerebras")
     response = client.chat_completion(
         messages=[
             {"role": "system", "content": "You are a helpful assistant that answers questions about municipal waste management policies. Always answer based on the provided context."},
             {"role": "user", "content": prompt}
         ],
-        model="HuggingFaceH4/zephyr-7b-beta",
+        model="meta-llama/Llama-3.1-8B-Instruct",
         max_tokens=300,
         temperature=0.3,
     )
